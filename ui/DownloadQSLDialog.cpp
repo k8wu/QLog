@@ -8,6 +8,7 @@
 #include "data/StationProfile.h"
 #include "service/lotw/Lotw.h"
 #include "service/eqsl/Eqsl.h"
+#include "service/qrzcom/QRZ.h"
 #include "ui/QSLImportStatDialog.h"
 #include "core/LogParam.h"
 
@@ -23,8 +24,13 @@ DownloadQSLDialog::DownloadQSLDialog(QWidget *parent)
 
     ui->lotwMyCallsignCombo->setModel(new SqlListModel("SELECT DISTINCT UPPER(station_callsign) "
                                                        "FROM contacts ORDER BY station_callsign", "", ui->lotwMyCallsignCombo));
+
+    ui->qrzMyCallsignCombo->setModel(new SqlListModel("SELECT DISTINCT UPPER(station_callsign) "
+                                                       "FROM contacts ORDER BY station_callsign", "", ui->qrzMyCallsignCombo));
+
     ui->lotwDateEdit->setDisplayFormat(locale.formatDateShortWithYYYY());
     ui->eqslDateEdit->setDisplayFormat(locale.formatDateShortWithYYYY());
+    ui->qrzDateEdit->setDisplayFormat(locale.formatDateShortWithYYYY());
     ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("&Download"));
 
     const StationProfile &profile = StationProfilesManager::instance()->getCurProfile1();
@@ -51,6 +57,13 @@ DownloadQSLDialog::DownloadQSLDialog(QWidget *parent)
         ui->eqslGroupBox->setChecked(false);
         ui->eqslGroupBox->setEnabled(false);
         ui->eqslGroupBox->setToolTip(tr("eQSL is not configured properly.<p> Please, use <b>Settings</b> dialog to configure it.</p>"));
+    }
+
+    if ( QRZBase::getLogbookAPIKey().isEmpty() )
+    {
+        ui->qrzGroupBox->setChecked(false);
+        ui->qrzGroupBox->setEnabled(false);
+        ui->qrzGroupBox->setToolTip(tr("QRZ.com is not configured properly.<p> Please, use <b>Settings</b> dialog to configure it.</p>"));
     }
 }
 
@@ -96,6 +109,13 @@ void DownloadQSLDialog::loadDialogState()
     ui->eqslDateEdit->setDate(LogParam::getDownloadQSLServiceLastDate("eqsl"));
     ui->eqslDateTypeCombo->setCurrentIndex((LogParam::getDownloadQSLServiceLastQSOQSL("eqsl")) ? 0 : 1);
 
+    /***********/
+    /* QRZ.com */
+    /***********/
+    ui->qrzGroupBox->setChecked(LogParam::getDownloadQSLServiceState("qrzcom"));
+    ui->qrzDateEdit->setDate(LogParam::getDownloadQSLServiceLastDate("qrzcom"));
+    ui->qrzDateTypeCombo->setCurrentIndex((LogParam::getDownloadQSLServiceLastQSOQSL("qrzcom")) ? 0 : 1);
+
     ui->eqslQTHProfileEdit->setText(LogParam::getDownloadQSLeQSLLastProfile());
 }
 
@@ -117,6 +137,14 @@ void DownloadQSLDialog::saveDialogState()
     LogParam::setDownloadQSLServiceLastDate("eqsl", QDateTime::currentDateTimeUtc().date());
     LogParam::setDownloadQSLServiceLastQSOQSL("eqsl", ui->eqslDateTypeCombo->currentIndex() == 0);
     LogParam::setDownloadQSLeQSLLastProfile(ui->eqslQTHProfileEdit->text());
+
+    /***********/
+    /* QRZ.com */
+    /***********/
+    LogParam::setDownloadQSLServiceState("qrzcom", ui->eqslGroupBox->isChecked());
+    LogParam::setDownloadQSLServiceLastDate("qrzcom", QDateTime::currentDateTimeUtc().date());
+    LogParam::setDownloadQSLServiceLastQSOQSL("qrzcom", ui->eqslDateTypeCombo->currentIndex() == 0);
+    // LogParam::setDownloadQSLQRZLastProfile(ui->qrzQTHProfileEdit->text());
 }
 
 void DownloadQSLDialog::prepareDownload(GenericQSLDownloader *service,
@@ -203,6 +231,17 @@ void DownloadQSLDialog::downloadQSLs()
             LogParam::setDownloadQSLLoTWLastCall(ui->lotwMyCallsignCombo->currentText());
             LogParam::setDownloadQSLServiceLastQSOQSL("lotw", qslSinceActive);
             lotw->receiveQSL(ui->lotwDateEdit->date(), !qslSinceActive, ui->lotwMyCallsignCombo->currentText());
+        });
+
+    if ( ui->qrzGroupBox->isChecked() )
+        downloadQueue.enqueue([=]()
+        {
+            QRZQSLDownloader* qrz = new QRZQSLDownloader(this);
+            bool qslSinceActive = ui->qrzDateTypeCombo->currentIndex() == 0;
+            prepareDownload(qrz, "QRZ.com", qslSinceActive, "qrzcom");
+            LogParam::setDownloadQSLQRZLastCall(ui->qrzMyCallsignCombo->currentText());
+            LogParam::setDownloadQSLServiceLastQSOQSL("qrzcom", qslSinceActive);
+            qrz->receiveQSL(ui->qrzDateEdit->date(), !qslSinceActive, ui->qrzMyCallsignCombo->currentText());
         });
 
     if ( downloadQueue.isEmpty() )

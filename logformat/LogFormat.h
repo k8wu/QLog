@@ -34,6 +34,7 @@ public:
     enum QSLFrom {
         LOTW,
         EQSL,
+        QRZ,
         UNKNOW
     };
 

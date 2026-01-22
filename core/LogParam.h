@@ -101,8 +101,12 @@ public:
     static void setDownloadQSLServiceLastQSOQSL(const QString& name, bool state);
     static QString getDownloadQSLLoTWLastCall();
     static void setDownloadQSLLoTWLastCall(const QString &call);
+    static QString getDownloadQSLQRZLastCall();
+    static void setDownloadQSLQRZLastCall(const QString &call);
     static QString getDownloadQSLeQSLLastProfile();
     static void setDownloadQSLeQSLLastProfile(const QString &profile);
+    static QString getDownloadQSLQRZLastProfile();
+    static void setDownloadQSLQRZLastProfile(const QString &profile);
 
     /*********
      * QRZ

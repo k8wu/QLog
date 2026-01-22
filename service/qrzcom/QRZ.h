@@ -6,6 +6,7 @@
 #include <QSqlRecord>
 #include "service/GenericCallbook.h"
 #include "service/GenericQSOUploader.h"
+#include "service/GenericQSLDownloader.h"
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -86,6 +87,27 @@ private:
 
     void actionInsert(const QString &logbookAPIKey, QByteArray& data, const QString &insertPolicy);
     QMap<QString, QString> parseActionResponse(const QString&) const;
+};
+
+class QRZQSLDownloader : public GenericQSLDownloader, private QRZBase
+{
+    Q_OBJECT
+
+public:
+    explicit QRZQSLDownloader(QObject *parent = nullptr);
+    virtual ~QRZQSLDownloader();
+
+    virtual void receiveQSL(const QDate &, bool, const QString &) override;
+
+public slots:
+    virtual void abortDownload() override;
+
+private:
+    QNetworkReply *currentReply;
+    const QString API_LOGBOOK_URL = "https://logbook.qrz.com/api";
+
+    virtual void processReply(QNetworkReply* reply) override;
+    void get(QList<QPair<QString, QString>> params);
 };
 
 #endif // QLOG_SERVICE_QRZ_QRZ_H

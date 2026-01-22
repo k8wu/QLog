@@ -829,6 +829,127 @@ void LogFormat::runQSLImport(QSLFrom fromService)
 
         switch ( fromService )
         {
+        case QRZ:
+        {
+            /* This will work similarly to LoTW, but the field names are a bit different. */
+            if ( QSLRecord.value("app_qrzlog_status").toString() == '1' )
+            {
+                QStringList updatedFields;
+                bool callUpdate = false;
+                bool newlyReceived = (QSLRecord.value("app_qrzlog_status").toString() != originalRecord.value("app_qrzlog_status").toString());
+
+                qCDebug(runtime) << "Attempt to" << (newlyReceived ? "force " : "") << "update QSO" << call.toString()
+                                 << band.toString() << start_time.toString();
+
+                auto conditionUpdate = [&](const QString &contactKey,
+                                           const QString &qslKey,
+                                           bool forceUpdate = false)
+                {
+                    if ( !QSLRecord.value(qslKey).toString().isEmpty()
+                        && ( forceUpdate || originalRecord.value(contactKey).toString().isEmpty() ) )
+                    {
+                        qCDebug(runtime) << "Updating:" << contactKey
+                                         << "to" << QSLRecord.value(qslKey).toString()
+                                         << (forceUpdate ? "force update" : "");
+                        updatedFields.append(contactKey + "(" + QSLRecord.value(qslKey).toString()  +")");
+                        originalRecord.setValue(contactKey, QSLRecord.value(qslKey));
+                        return true;
+                    }
+                    return false;
+                };
+
+                auto conditionUpdateSpecial = [&](const QString &contactKey,
+                                                  const QString &qslKey,
+                                                  bool forceUpdate = false)
+                {
+                    QString contactValue = originalRecord.value(contactKey).toString();
+                    QString QSLValue = QSLRecord.value(qslKey).toString();
+                    contactValue.remove(reLeadingZero);
+                    QSLValue.remove(reLeadingZero);
+
+                    if ( !QSLValue.isEmpty()
+                        && ( forceUpdate || contactValue != QSLValue ) )
+                    {
+                        qCDebug(runtime) << "Updating:" << contactKey
+                                         << "from" << originalRecord.value(contactKey).toString()
+                                         << "to" << QSLValue
+                                         << (forceUpdate ? "force update" : "");
+                        updatedFields.append(contactKey + "(" + QSLRecord.value(qslKey).toString()  +")");
+                        originalRecord.setValue(contactKey, QSLValue);
+                        return true;
+                    }
+                    return false;
+                };
+
+                callUpdate |= conditionUpdate("app_qrzlog_status", "qsl_rcvd", newlyReceived);
+                callUpdate |= conditionUpdate("app_qrzlog_qsldate", "qsl_rdate", newlyReceived);
+                callUpdate |= conditionUpdate("credit_granted", "credit_granted", newlyReceived);
+                callUpdate |= conditionUpdate("credit_submitted", "credit_submitted", newlyReceived);
+                callUpdate |= conditionUpdate("pfx", "pfx", newlyReceived);
+                callUpdate |= conditionUpdate("iota", "iota", newlyReceived);
+                callUpdate |= conditionUpdate("vucc_grids", "vucc_grids", newlyReceived);
+                callUpdate |= conditionUpdate("state", "state", newlyReceived);
+                callUpdate |= conditionUpdate("cnty", "cnty", newlyReceived);
+                callUpdate |= conditionUpdateSpecial("ituz", "ituz", newlyReceived);
+                callUpdate |= conditionUpdateSpecial("cqz", "cqz", newlyReceived);
+
+                if ( originalRecord.value("qsl_rcvd_via").toString() != "E" )
+                {
+                    qCDebug(runtime) << "Updating: qsl_rcvd_via from" << originalRecord.value("qsl_rcvd_via").toString() << "to E";
+                    originalRecord.setValue("qsl_rcvd_via", "E");
+                    updatedFields.append("qsl_rcvd_via (E)");
+                    callUpdate |= true;
+                }
+
+                const QString origGrig = originalRecord.value("gridsquare").toString();
+                const Gridsquare dxNewGrid(QSLRecord.value("gridsquare").toString());
+
+                if ( ( newlyReceived
+                     ||  origGrig.isEmpty()
+                     || ( origGrig.length() < QSLRecord.value("gridsquare").toString().length()
+                         && dxNewGrid.isValid()
+                         && dxNewGrid.getGrid().contains(origGrig) ) )
+                    && !dxNewGrid.getGrid().isEmpty() )
+                {
+                    const Gridsquare myGrid(originalRecord.value("my_gridsquare").toString());
+
+                    originalRecord.setValue("gridsquare", dxNewGrid.getGrid());
+
+                    double distance;
+
+                    if ( myGrid.distanceTo(dxNewGrid, distance) )
+                    {
+                        originalRecord.setValue("distance", QVariant(distance));
+                    }
+                    qCDebug(runtime) << "Updating: grid from " << origGrig << "to" << dxNewGrid.getGrid();
+                    updatedFields.append("gridsquare (" + dxNewGrid.getGrid()  +")");
+                    callUpdate |= true;
+                }
+
+                if ( callUpdate )
+                {
+                    qCDebug(runtime) << "Calling update for" << call << band << mode << start_time << satName;
+                    if ( !model.setRecord(0, originalRecord) )
+                    {
+                        qWarning() << "Cannot update a Contact record - " << model.lastError();
+                        qCDebug(runtime) << originalRecord;
+                    }
+
+                    if ( !model.submitAll() )
+                    {
+                        qWarning() << "Cannot commit changes to Contact Table - " << model.lastError();
+                    }
+                    if ( newlyReceived )
+                    {
+                        const DxccStatus status = Data::instance()->dxccStatus(originalRecord.value("dxcc").toInt(), band.toString(), mode.toString());
+                        stats.newQSLs.append(reportFormatter(start_time.toDateTime(), call.toString(), mode.toString(), {tr("DXCC State:") + " " + Data::statusToText(status)}));
+                    }
+                    else
+                        stats.updatedQSOs.append(reportFormatter(start_time.toDateTime(), call.toString(), mode.toString(), updatedFields));
+                }
+            }
+            break;
+        }
         case LOTW:
         {
             /* https://lotw.arrl.org/lotw-help/developer-query-qsos-qsls/?lang=en */

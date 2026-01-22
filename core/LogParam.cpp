@@ -327,6 +327,16 @@ void LogParam::setDownloadQSLLoTWLastCall(const QString &call)
     setParam("downloadqsl/lotw/lastmycallsign", call);
 }
 
+QString LogParam::getDownloadQSLQRZLastCall()
+{
+    return getParam("downloadqsl/qrzcom/lastmycallsign").toString();
+}
+
+void LogParam::setDownloadQSLQRZLastCall(const QString &call)
+{
+    setParam("downloadqsl/qrzcom/lastmycallsign", call);
+}
+
 QString LogParam::getDownloadQSLeQSLLastProfile()
 {
     return getParam("downloadqsl/eqsl/lastqthprofile").toString();

@@ -12,6 +12,7 @@
 #include "data/Callsign.h"
 #include "core/LogParam.h"
 #include "data/Data.h"
+#include "logformat/AdiFormat.h"
 
 //https://www.qrz.com/docs/logbook/QRZLogbookAPI.html
 
@@ -533,4 +534,165 @@ QMap<QString, QString> QRZUploader::parseActionResponse(const QString &responseS
     }
 
     return data;
+}
+
+QRZQSLDownloader::QRZQSLDownloader(QObject *parent) :
+    GenericQSLDownloader(parent),
+    QRZBase(),
+    currentReply(nullptr)
+{
+    FCT_IDENTIFICATION;
+}
+
+void QRZQSLDownloader::receiveQSL(const QDate &start_date, bool qso_since, const QString &stationCallsign)
+{
+    FCT_IDENTIFICATION;
+    qCDebug(function_parameters) << start_date << " " << qso_since;
+
+    const QString &logbookAPIKey = getLogbookAPIKey();
+
+    QList<QPair<QString, QString>> params;
+    params.append(qMakePair(QString("KEY"), logbookAPIKey));
+    params.append(qMakePair(QString("ACTION"), QString("FETCH")));
+
+    const QString &start = start_date.toString("yyyy-MM-dd");
+
+    if (qso_since)
+    {
+        params.append(qMakePair(QString("OPTION"), QString("STATUS:ALL,MODSINCE:" + start)));
+    }
+    else
+    {
+        params.append(qMakePair(QString("OPTION"), QString("STATUS:CONFIRMED,MODSINCE:" + start)));
+    }
+
+    get(params);
+}
+
+void QRZQSLDownloader::abortDownload()
+{
+    FCT_IDENTIFICATION;
+
+    if ( currentReply )
+    {
+        currentReply->abort();
+        currentReply = nullptr;
+    }
+}
+
+void QRZQSLDownloader::processReply(QNetworkReply *reply)
+{
+    FCT_IDENTIFICATION;
+
+    /* always process one requests per class */
+    currentReply = nullptr;
+
+    int replyStatusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    if (reply->error() != QNetworkReply::NoError
+        || replyStatusCode < 200
+        || replyStatusCode >= 300)
+    {
+        qCInfo(runtime) << "QRZ error" << reply->errorString();
+        qCDebug(runtime) << "HTTP Status Code" << replyStatusCode;
+        if ( reply->error() != QNetworkReply::OperationCanceledError )
+        {
+            emit receiveQSLFailed(reply->errorString());
+            reply->deleteLater();
+        }
+        return;
+    }
+
+    qint64 size = reply->size();
+    qCDebug(runtime) << "Reply received, size: " << size;
+
+    /* Currently, QT returns an incorrect stream position value in Network stream
+     * when the stream is used in QTextStream. Therefore
+     * QLog downloads a response, saves it to a temp file and opens
+     * the file as a stream */
+    QTemporaryFile tempFile;
+
+    if ( ! tempFile.open() )
+    {
+        qCDebug(runtime) << "Cannot open temp file";
+        emit receiveQSLFailed(tr("Cannot open temporary file"));
+        return;
+    }
+
+    const QByteArray &data = reply->readAll();
+
+    qCDebug(runtime) << data;
+
+    if ( data.contains("RESULT=AUTH") )
+    {
+        emit receiveQSLFailed(tr("Incorrect API key"));
+        return;
+    }
+    else if ( data.contains("RESULT=FAIL") )
+    {
+        emit receiveQSLFailed(tr("Failed to receive any QSL/QSO data"));
+        return;
+    }
+
+    QString dataString = QString(data);
+    QString adiString = dataString.split("ADIF=")[1];
+    adiString = adiString.replace("&lt;", "<").replace("&gt;", ">");
+
+    tempFile.write(adiString.toUtf8());
+    tempFile.flush();
+    tempFile.seek(0);
+
+    emit receiveQSLStarted();
+
+    /* see above why QLog uses a temp file */
+    QTextStream stream(&tempFile);
+    AdiFormat adi(stream);
+
+    connect(&adi, &AdiFormat::importPosition, this, [this, size](qint64 position)
+            {
+                if ( size > 0 )
+                {
+                    double progress = position * 100.0 / size;
+                    emit receiveQSLProgress(static_cast<qulonglong>(progress));
+                }
+            });
+
+    connect(&adi, &AdiFormat::QSLMergeFinished, this, [this](QSLMergeStat stats)
+            {
+                emit receiveQSLComplete(stats);
+            });
+
+    adi.runQSLImport(adi.QRZ);
+
+    tempFile.close();
+
+    reply->deleteLater();
+}
+
+void QRZQSLDownloader::get(QList<QPair<QString, QString>> params) {
+    FCT_IDENTIFICATION;
+
+    QUrlQuery query;
+    query.setQueryItems(params);
+
+    QUrl url(API_LOGBOOK_URL);
+    url.setQuery(query);
+
+    qCDebug(runtime) << Data::safeQueryString(query);
+
+    if ( currentReply )
+        qCWarning(runtime) << "processing a new request but the previous one hasn't been completed yet !!!";
+
+    currentReply = getNetworkAccessManager()->get(QNetworkRequest(url));
+}
+
+QRZQSLDownloader::~QRZQSLDownloader()
+{
+    FCT_IDENTIFICATION;
+
+    if ( currentReply )
+    {
+        currentReply->abort();
+        currentReply->deleteLater();
+    }
 }
