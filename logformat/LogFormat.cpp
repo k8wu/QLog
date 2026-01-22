@@ -831,8 +831,8 @@ void LogFormat::runQSLImport(QSLFrom fromService)
         {
         case QRZ:
         {
-            /* This will work similarly to LoTW, but the field names are a bit different. */
-            if ( QSLRecord.value("app_qrzlog_status").toString() == '1' )
+            // This will work similarly to LoTW, but the field names are a bit different.
+            if ( QSLRecord.value("app_qrzlog_status").toString() == 'C' )
             {
                 QStringList updatedFields;
                 bool callUpdate = false;
