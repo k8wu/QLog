@@ -559,7 +559,7 @@ void QRZQSLDownloader::receiveQSL(const QDate &start_date, bool qso_since, const
 
     if (qso_since)
     {
-        params.append(qMakePair(QString("OPTION"), QString("STATUS:ALL,MODSINCE:" + start)));
+        params.append(qMakePair(QString("OPTION"), QString("MODSINCE:" + start)));
     }
     else
     {
