@@ -627,7 +627,6 @@ QMap<LogbookModel::ColumnID, QString> LogbookModel::fieldNameTranslationMap =
     {COLUMN_ANT_AZ, QT_TR_NOOP("Antenna Az")},
     {COLUMN_ANT_EL, QT_TR_NOOP("Antenna El")},
     {COLUMN_ANT_PATH, QT_TR_NOOP("Signal Path")},
-    {COLUMN_APP_QRZLOG_STATUS, QT_TR_NOOP("QRZ Log Status")},
     {COLUMN_ARRL_SECT, QT_TR_NOOP("ARRL Section")},
     {COLUMN_AWARD_SUBMITTED, QT_TR_NOOP("Award Submitted")},
     {COLUMN_AWARD_GRANTED, QT_TR_NOOP("Award Granted")},
